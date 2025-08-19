@@ -1,25 +1,23 @@
 #!/bin/bash
-
-# Simple Dante Socks5 Script for Debian
-# Script modified for Debian 12 compatibility
-# Original by Ubed, adapted from Bonveio
+# Simple Dante Socks5 Script for Debian and Ubuntu
+# Script by Ubed
+# nuwus kang Bonveio https://github.com/Bonveio/BonvScripts
+#
 
 function YourBanner(){
- echo -e " Welcome to my SOCKS5 Server Installer"
- echo -e " SOCKS5 Server Installer for Debian 12"
+# Edit nyo to
+ echo -e " Welcome to my Script"
+ echo -e " SOCKS5 Server Installer for Debian & Ubuntu"
+ echo -e " Script by Bonveio"
  echo -e " This script is open for Remodification and Redistribution"
  echo -e ""
 }
 
 source /etc/os-release
-if [[ "$ID" != 'debian' ]]; then
+if [[ "$ID" != 'debian' && "$ID" != 'ubuntu' ]]; then
  YourBanner
- echo -e "[\e[1;31mError\e[0m] This script is for Debian Machine only, exiting..." 
+ echo -e "[\e[1;31mError\e[0m] This script is for Debian or Ubuntu only, exting..." 
  exit 1
-fi
-
-if [[ $VERSION_ID -lt 12 ]]; then
-  echo -e "[\e[1;33mWarning\e[0m] This script is optimized for Debian 12. It might work on older versions but is not guaranteed."
 fi
 
 if [[ $EUID -ne 0 ]];then
@@ -34,51 +32,39 @@ function Installation(){
  apt-get update
  apt-get upgrade -y
  apt-get install wget nano dante-server netcat -y &> /dev/null | echo '[*] Installing SOCKS5 Server...'
- 
- # Get the main network interface name
- SOCKSINET=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
- if [ -z "$SOCKSINET" ]; then
-   echo -e "[\e[1;31mError\e[0m] Failed to detect the main network interface. Exiting..."
-   exit 1
- fi
-
- cat <<EOF> /etc/danted.conf
+ cat <<'EOF'> /etc/danted.conf
 logoutput: /var/log/socks.log
-internal: 0.0.0.0 port = $SOCKSPORT
-external: $SOCKSINET
-socksmethod: $SOCKSAUTH
+internal: 0.0.0.0 port = SOCKSPORT
+external: SOCKSINET
+socksmethod: SOCKSAUTH
 user.privileged: root
 user.notprivileged: nobody
 
 client pass {
  from: 0.0.0.0/0 to: 0.0.0.0/0
  log: error connect disconnect
-}
+ }
  
 client block {
  from: 0.0.0.0/0 to: 0.0.0.0/0
  log: connect error
-}
+ }
  
 socks pass {
  from: 0.0.0.0/0 to: 0.0.0.0/0
  log: error connect disconnect
-}
+ }
  
 socks block {
  from: 0.0.0.0/0 to: 0.0.0.0/0
  log: connect error
-}
+ }
 EOF
- 
- # This line is no longer necessary as we are now using the correct variable directly
- # sed -i "s/SOCKSINET/$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)/g" /etc/danted.conf
- # sed -i "s/SOCKSPORT/$SOCKSPORT/g" /etc/danted.conf
- # sed -i "s/SOCKSAUTH/$SOCKSAUTH/g" /etc/danted.conf
- 
- # Ensure /bin/false is in /etc/shells for secure user creation
- grep -q '/bin/false' /etc/shells || echo '/bin/false' >> /etc/shells
-
+ sed -i "s/SOCKSINET/$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)/g" /etc/danted.conf
+ sed -i "s/SOCKSPORT/$SOCKSPORT/g" /etc/danted.conf
+ sed -i "s/SOCKSAUTH/$SOCKSAUTH/g" /etc/danted.conf
+ sed -i '/\/bin\/false/d' /etc/shells
+ echo '/bin/false' >> /etc/shells
  systemctl restart danted.service
  systemctl enable danted.service
 }
