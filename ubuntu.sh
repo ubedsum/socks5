@@ -8,11 +8,8 @@
 set -e
 
 function YourBanner(){
-
-# ASCII Art Logo for "UBED" - Rapi
-
-echo -e "
-\\e
+  # ASCII Art Logo for "UBED"
+  echo -e "
     \e[1;36m__  __ \e[1;33m_____\e[1;36m ______ \e[1;33m_____\e[0m
     \e[1;36m\\ \\/ / \e[1;33m| __ )\e[1;36m|  _ \\ \e[1;33m| __ )\e[0m
     \e[1;36m >  <  \e[1;33m|  _ \e[1;36m | | | |\e[1;33m|  _ \e[0m
