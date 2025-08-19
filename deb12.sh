@@ -195,8 +195,8 @@ function main_menu(){
   Installation
   ;;
   2)
-  until [[ "$SOCKSPORT" =~ ^[0-9]+$ ]] && [ "$SOCKSPORT" -ge 1 ] && [ "$SOCKPORT" -le 65535 ]; do
-   read -rp " Enter SOCKS5 Port [1-65535]: " -i 2408 -e SOCKSPORT
+  until [[ "$SOCKSPORT" =~ ^[0-9]+$ ]] && (( SOCKSPORT >= 1 && SOCKSPORT <= 65535 )); do
+    read -rp " Enter SOCKS5 Port [1-65535]: " -i 2408 -e SOCKSPORT
   done
   SOCKSAUTH='username'
   until [[ "$socksUser" =~ ^[a-zA-Z0-9_]+$ ]]; do
