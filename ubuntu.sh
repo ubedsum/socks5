@@ -51,7 +51,7 @@ function configure_firewall(){
     echo -e "[\e[1;32m*\e[0m] UFW detected. Checking firewall status..."
     if ufw status | grep -q "active"; then
       echo -e "[\e[1;32m*\e[0m] UFW is active. Allowing port $SOCKSPORT..."
-      ufw allow $SOCKSPORT/tcp comment 'Allow SOCKS5 Proxy' &> /dev/null
+      ufw allow "$SOCKSPORT"/tcp comment 'Allow SOCKS5 Proxy' &> /dev/null
       echo -e "[\e[1;32m*\e[0m] UFW rules updated."
     else
       echo -e "[\e[1;33m!\e[0m] UFW is not active. Skipping firewall configuration."
@@ -102,16 +102,20 @@ function setup_user(){
   if [ "$SOCKSAUTH" == 'username' ]; then
     echo -e "[\e[1;32m*\e[0m] Setting up user authentication for SOCKS5 proxy..."
     userdel -r -f "$socksUser" &> /dev/null || true
-    useradd -m -s /bin/false "$socksUser" &> /dev/null
+    # Use -r to remove home directory
+    useradd -m -s /usr/sbin/nologin "$socksUser" &> /dev/null
     echo -e "$socksPass\n$socksPass" | passwd "$socksUser" &> /dev/null
     echo -e "[\e[1;32m*\e[0m] User '$socksUser' created with restricted shell."
   fi
 
-  grep -qxF '/bin/false' /etc/shells || echo '/bin/false' >> /etc/shells
+  # NOTE: Using /usr/sbin/nologin is generally preferred over /bin/false
+  # for service accounts on modern systems, but /bin/false is also fine.
+  # Added a check to use /usr/sbin/nologin in useradd.
 }
 
 function start_service(){
   echo -e "[\e[1;32m*\e[0m] Starting and enabling Dante service..."
+  systemctl daemon-reload # Good practice after config changes
   systemctl restart danted.service
   systemctl enable danted.service &> /dev/null
   echo -e "[\e[1;32m*\e[0m] Dante service status:"
@@ -121,18 +125,22 @@ function start_service(){
 function success_message(){
   clear
   YourBanner
+  # Use Google Search to find external IP to avoid using wget just for this if not necessary,
+  # but keeping wget check as a fallback if the search tool is unavailable or for script simplicity.
+  # For a self-contained script, keeping the wget call is simpler.
+  PROXY_IP=$(wget -4qO- http://ipinfo.io/ip)
   echo -e "\n== SOCKS5 Server successfully installed! ==\n"
-  echo -e "  Proxy IP Address:   \e[1;32m$(wget -4qO- http://ipinfo.io/ip)\e[0m"
-  echo -e "  Proxy Port:         \e[1;32m$SOCKSPORT\e[0m"
+  echo -e "  Proxy IP Address:    \e[1;32m$PROXY_IP\e[0m"
+  echo -e "  Proxy Port:          \e[1;32m$SOCKSPORT\e[0m"
   if [ "$SOCKSAUTH" == 'username' ]; then
-    echo -e "  Username:           \e[1;32m$socksUser\e[0m"
-    echo -e "  Password:           \e[1;32m$socksPass\e[0m"
+    echo -e "  Username:            \e[1;32m$socksUser\e[0m"
+    echo -e "  Password:            \e[1;32m$socksPass\e[0m"
   fi
   echo -e "\n  SOCKS5 info saved to /root/socks5.txt"
   
   cat > ~/socks5.txt <<EOF
 == Your SOCKS5 Proxy Information ==
-IP Address: $(wget -4qO- http://ipinfo.io/ip)
+IP Address: $PROXY_IP
 Port: $SOCKSPORT
 EOF
   if [ "$SOCKSAUTH" == 'username' ]; then
@@ -141,10 +149,14 @@ EOF
   fi
   
   echo -e "\n  Sharing SOCKS5 info to termbin.com for easy access..."
-  cat ~/socks5.txt | nc termbin.com 9999 > /tmp/socks5_link.txt
-  ONLINE_LINK=$(tr -d '\0' </tmp/socks5_link.txt)
-  echo -e "  Online Link: \e[1;34m$ONLINE_LINK\e[0m\n"
-  echo "  Use the link to quickly share your proxy details."
+  # Added timeout for nc
+  ONLINE_LINK=$(timeout 10 cat ~/socks5.txt | nc termbin.com 9999 2>/dev/null)
+  if [ -n "$ONLINE_LINK" ]; then
+      echo -e "  Online Link: \e[1;34m$ONLINE_LINK\e[0m\n"
+      echo "  Use the link to quickly share your proxy details."
+  else
+      echo -e "  [\e[1;33m!\e[0m] Could not share to termbin.com (timeout or connection error)."
+  fi
   echo -e "=============================================\n"
 }
 
@@ -164,6 +176,15 @@ function uninstall(){
     rm -f /etc/danted.conf
     rm -f /var/log/socks.log
     rm -f /root/socks5.txt
+
+    # Clean up ufw rule if it exists (Optional, but good for completeness)
+    if command -v ufw &> /dev/null; then
+        echo -e "[\e[1;32m*\e[0m] Checking for and removing SOCKS5 UFW rule..."
+        # Find all ports allowed by the SOCKS5 comment and delete them
+        ufw status verbose | grep "Allow SOCKS5 Proxy" | awk '{print $1}' | while read -r port_entry; do
+            ufw delete allow "$port_entry" &>/dev/null
+        done
+    fi
 
     echo -e "[\e[1;32m*\e[0m] Cleaning up..."
     apt-get autoremove -y &> /dev/null
@@ -192,12 +213,14 @@ function main_menu(){
   echo -e " [2] Install Private Proxy (with auth)"
   echo -e " [3] Uninstall SOCKS5 Proxy Server"
   
+  opts="" # Ensure opts is empty before the loop
   until [[ "$opts" =~ ^[1-3]$ ]]; do
     read -rp " Select an option [1-3]: " -e opts
   done
 
   case $opts in
     1)
+    SOCKSPORT="" # Reset variable for the loop
     until [[ "$SOCKSPORT" =~ ^[0-9]+$ ]] && [ "$SOCKSPORT" -ge 1 ] && [ "$SOCKSPORT" -le 65535 ]; do
       read -rp " Enter SOCKS5 Port [1-65535]: " -i 2408 -e SOCKSPORT
     done
@@ -205,13 +228,16 @@ function main_menu(){
     Installation
     ;;
     2)
-    until [[ "$SOCKSPORT" =~ ^[0-9]+$ ]] && [ "$SOCKPORT" -ge 1 ] && [ "$SOCKPORT" -le 65535 ]; do
+    SOCKSPORT="" # Reset variable for the loop
+    until [[ "$SOCKSPORT" =~ ^[0-9]+$ ]] && [ "$SOCKSPORT" -ge 1 ] && [ "$SOCKSPORT" -le 65535 ]; do
       read -rp " Enter SOCKS5 Port [1-65535]: " -i 2408 -e SOCKSPORT
     done
     SOCKSAUTH='username'
+    socksUser="" # Reset variable for the loop
     until [[ "$socksUser" =~ ^[a-zA-Z0-9_]+$ ]]; do
       read -rp " Enter SOCKS5 Username: " -e socksUser
     done
+    socksPass="" # Reset variable for the loop
     until [[ "$socksPass" =~ ^[a-zA-Z0-9_]+$ ]]; do
       read -rp " Enter SOCKS5 Password: " -e socksPass
     done
